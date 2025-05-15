@@ -12,13 +12,13 @@ import { JamRecorderComponent } from './jam-recorder/jam-recorder.component';
   styleUrl: './app.component.scss'
 })
 export class AppComponent implements OnInit {
-  title = 'spotify-jam-saver';
-  isAuthenticated = false;
+  public title = 'Spotify Jam Saver';
+  public isAuthenticated = false;
 
   constructor(private spotifyService: SpotifyService) {}
 
-  ngOnInit() {
-    if (this.spotifyService.handleAuthCallback()) {
+  async ngOnInit() {
+    if (await this.spotifyService.handleAuthCallback()) {
       this.isAuthenticated = true;
     } else {
       this.isAuthenticated = this.spotifyService.isAuthenticated();

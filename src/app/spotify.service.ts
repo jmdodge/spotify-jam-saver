@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import SpotifyWebApi from 'spotify-web-api-js';
+import { Router } from '@angular/router';
 
 @Injectable({
   providedIn: 'root'
@@ -7,7 +8,7 @@ import SpotifyWebApi from 'spotify-web-api-js';
 export class SpotifyService {
   private spotifyApi: SpotifyWebApi.SpotifyWebApiJs = new SpotifyWebApi();
   private clientId = 'ac5c1af01d0f46659597010bee387883';
-  private redirectUri = 'http://localhost:4205/';
+  private redirectUri = 'http://127.0.0.1:4205/';
   private scopes = [
     'playlist-read-private',
     'playlist-modify-public',
@@ -16,31 +17,122 @@ export class SpotifyService {
     'user-modify-playback-state'
   ];
 
-  constructor() { }
+  private accessToken: string | null = null;
+  private readonly CODE_VERIFIER_STORAGE_KEY = 'spotify_code_verifier';
 
-  authorize() {
-    const authorizeURL = `https://accounts.spotify.com/authorize?client_id=${this.clientId}&response_type=token&redirect_uri=${encodeURIComponent(this.redirectUri)}&scope=${encodeURIComponent(this.scopes.join(' '))}`;
-    window.location.href = authorizeURL;
+  constructor(private router: Router) { }
+
+  private generateRandomString(length: number): string {
+    let text = '';
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    for (let i = 0; i < length; i++) {
+      text += possible.charAt(Math.floor(Math.random() * possible.length));
+    }
+    return text;
   }
 
-  handleAuthCallback(): boolean {
-    const hash = window.location.hash.substring(1);
-    const params = new URLSearchParams(hash);
-    const accessToken = params.get('access_token');
+  private async generateCodeChallenge(verifier: string): Promise<string> {
+    const data = new TextEncoder().encode(verifier);
+    const digest = await window.crypto.subtle.digest('SHA-256', data);
+    return btoa(String.fromCharCode.apply(null, [...new Uint8Array(digest)]))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+  }
 
-    if (accessToken) {
-      this.spotifyApi.setAccessToken(accessToken);
-      // Optionally, store the token in local storage or a cookie
-      // localStorage.setItem('spotify_access_token', accessToken);
-      // Clear the hash from the URL
-      window.location.hash = '';
-      return true;
+  public async authorize() {
+    const verifier = this.generateRandomString(128);
+    localStorage.setItem(this.CODE_VERIFIER_STORAGE_KEY, verifier);
+    const challenge = await this.generateCodeChallenge(verifier);
+
+    const params = new URLSearchParams();
+    params.append('client_id', this.clientId);
+    params.append('response_type', 'code');
+    params.append('redirect_uri', this.redirectUri);
+    params.append('scope', this.scopes.join(' '));
+    params.append('code_challenge_method', 'S256');
+    params.append('code_challenge', challenge);
+
+    window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
+  }
+
+  public async handleAuthCallback(): Promise<boolean> {
+    const queryParams = new URLSearchParams(window.location.search);
+    const code = queryParams.get('code');
+    const error = queryParams.get('error');
+
+    this.router.navigate([], { queryParams: {}, replaceUrl: true });
+
+    if (error) {
+      console.error('Error during Spotify authorization:', error);
+      return false;
     }
-    return false;
+
+    if (code) {
+      console.log('Received authorization code:', code);
+      try {
+        const token = await this.exchangeCodeForToken(code);
+        if (token) {
+          this.accessToken = token;
+          this.spotifyApi.setAccessToken(this.accessToken);
+          console.log('Access token obtained and set using PKCE.');
+          return true;
+        } else {
+          console.error('Failed to exchange code for token using PKCE.');
+          return false;
+        }
+      } catch (e) {
+        console.error('Error during PKCE token exchange:', e);
+        return false;
+      }
+    }
+    return !!this.getAccessToken();
+  }
+
+  private async exchangeCodeForToken(code: string): Promise<string | null> {
+    const verifier = localStorage.getItem(this.CODE_VERIFIER_STORAGE_KEY);
+
+    if (!verifier) {
+      console.error('Code verifier not found in local storage.');
+      throw new Error('Code verifier not found.');
+    }
+
+    const params = new URLSearchParams();
+    params.append('client_id', this.clientId);
+    params.append('grant_type', 'authorization_code');
+    params.append('code', code);
+    params.append('redirect_uri', this.redirectUri);
+    params.append('code_verifier', verifier);
+
+    try {
+      const result = await fetch('https://accounts.spotify.com/api/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params
+      });
+
+      if (!result.ok) {
+        const errorBody = await result.text();
+        console.error('Spotify token exchange failed:', result.status, errorBody);
+        throw new Error(`Spotify token API request failed: ${result.status} ${errorBody}`);
+      }
+
+      const { access_token, refresh_token, expires_in } = await result.json();
+      localStorage.removeItem(this.CODE_VERIFIER_STORAGE_KEY);
+
+      if (refresh_token) {
+      }
+
+      return access_token || null;
+    } catch (error) {
+      console.error('Exception during token exchange:', error);
+      localStorage.removeItem(this.CODE_VERIFIER_STORAGE_KEY);
+      return null;
+    }
   }
 
   getAccessToken(): string | null {
-    return this.spotifyApi.getAccessToken();
+    return this.accessToken;
   }
 
   isAuthenticated(): boolean {
@@ -48,9 +140,10 @@ export class SpotifyService {
   }
 
   logout() {
+    this.accessToken = null;
     this.spotifyApi.setAccessToken(null);
-    // Optionally, remove the token from local storage
-    // localStorage.removeItem('spotify_access_token');
+    localStorage.removeItem(this.CODE_VERIFIER_STORAGE_KEY);
+    console.log('Logged out.');
   }
 
   async createPlaylist(name: string): Promise<SpotifyApi.CreatePlaylistResponse | null> {
@@ -71,8 +164,6 @@ export class SpotifyService {
 
   async getPlaybackState(): Promise<SpotifyApi.CurrentPlaybackResponse | null> {
     if (!this.isAuthenticated()) {
-      // It's possible the token expired, try to re-authorize or handle appropriately
-      // For now, returning null, JamRecorderComponent will try to re-auth
       return null;
     }
     try {
@@ -99,13 +190,46 @@ export class SpotifyService {
   }
 
   private handleApiError(error: any) {
-    if (error && error.status === 401) {
-      // Token has expired or is invalid
-      this.logout(); // Clear the invalid token
-      this.authorize(); // Re-initiate authorization
+    const hasStatus = (err: any): err is { status: number, message?: string } => {
+        return typeof err === 'object' && err !== null && typeof err.status === 'number';
+    };
+
+    if (hasStatus(error) && error.status === 401) {
+      console.error('Spotify API Error 401: Token expired or invalid. Re-authorizing.', error.message || error);
+      this.logout();
+      this.authorize();
     }
-    // You could add more specific error handling here
   }
 
-  // Add other Spotify API methods here (e.g., createPlaylist, searchTracks, addToPlaylist, getPlaybackState)
+  private async fetchProfile(token: string): Promise<UserProfile> {
+    const result = await fetch("https://api.spotify.com/v1/me", {
+        method: "GET", headers: { Authorization: `Bearer ${token}` }
+    });
+
+    return await result.json();
+}
+}
+
+export interface UserProfile {
+  country: string;
+  display_name: string;
+  email: string;
+  explicit_content: {
+      filter_enabled: boolean,
+      filter_locked: boolean
+  },
+  external_urls: { spotify: string; };
+  followers: { href: string; total: number; };
+  href: string;
+  id: string;
+  images: UserProfileImage[];
+  product: string;
+  type: string;
+  uri: string;
+}
+
+export interface UserProfileImage {
+  url: string;
+  height: number;
+  width: number;
 }
