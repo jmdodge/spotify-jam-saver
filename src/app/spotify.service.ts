@@ -2,6 +2,11 @@ import { Injectable } from '@angular/core';
 import SpotifyWebApi from 'spotify-web-api-js';
 import { Router } from '@angular/router';
 
+const SPOTIFY_ACCESS_TOKEN_KEY = 'spotify_access_token';
+const SPOTIFY_TOKEN_EXPIRY_KEY = 'spotify_token_expiry';
+const SPOTIFY_USER_PROFILE_KEY = 'spotify_user_profile'; // For storing profile to avoid re-fetch on simple reloads
+const CODE_VERIFIER_STORAGE_KEY_CONST = 'spotify_code_verifier'; // Renamed for clarity
+
 @Injectable({
   providedIn: 'root'
 })
@@ -19,9 +24,79 @@ export class SpotifyService {
 
   private accessToken: string | null = null;
   private userProfile: UserProfile | null = null;
-  private readonly CODE_VERIFIER_STORAGE_KEY = 'spotify_code_verifier';
+  private tokenExpiry: number | null = null; // Store as timestamp (milliseconds)
 
-  constructor(private router: Router) { }
+  constructor(private router: Router) {
+    this.loadTokenAndProfileFromStorage();
+  }
+
+  private loadTokenAndProfileFromStorage(): boolean {
+    const storedToken = localStorage.getItem(SPOTIFY_ACCESS_TOKEN_KEY);
+    const storedExpiry = localStorage.getItem(SPOTIFY_TOKEN_EXPIRY_KEY);
+    const storedProfile = localStorage.getItem(SPOTIFY_USER_PROFILE_KEY);
+
+    if (storedToken && storedExpiry) {
+      const expiryTimestamp = parseInt(storedExpiry, 10);
+      if (Date.now() < expiryTimestamp) {
+        this.accessToken = storedToken;
+        this.tokenExpiry = expiryTimestamp;
+        this.spotifyApi.setAccessToken(this.accessToken);
+        if (storedProfile) {
+          try {
+            this.userProfile = JSON.parse(storedProfile);
+          } catch (e) {
+            console.error('Error parsing stored user profile:', e);
+            localStorage.removeItem(SPOTIFY_USER_PROFILE_KEY); // Clear invalid profile
+            this.userProfile = null;
+          }
+        }
+        // If profile wasn't in storage or failed to parse, but token is valid, fetch it.
+        if (!this.userProfile && this.accessToken) {
+            this.fetchProfile(this.accessToken).then(profile => {
+                this.userProfile = profile;
+                localStorage.setItem(SPOTIFY_USER_PROFILE_KEY, JSON.stringify(this.userProfile));
+            }).catch(err => {
+                console.error("Error fetching profile in loadTokenAndProfileFromStorage:", err);
+                // Potentially handle token as invalid if profile fetch fails consistently
+            });
+        }
+        console.log('Loaded token and profile from storage.');
+        return true;
+      } else {
+        console.log('Spotify token from storage has expired.');
+        this.clearFullSession(); // Clear everything including verifier if token expired
+      }
+    }
+    return false;
+  }
+
+  private storeTokenAndProfile(token: string, expiresInSeconds: number, profile?: UserProfile) {
+    this.accessToken = token;
+    this.tokenExpiry = Date.now() + expiresInSeconds * 1000;
+    localStorage.setItem(SPOTIFY_ACCESS_TOKEN_KEY, this.accessToken);
+    localStorage.setItem(SPOTIFY_TOKEN_EXPIRY_KEY, this.tokenExpiry.toString());
+    this.spotifyApi.setAccessToken(this.accessToken);
+
+    if (profile) {
+        this.userProfile = profile;
+        localStorage.setItem(SPOTIFY_USER_PROFILE_KEY, JSON.stringify(this.userProfile));
+    }
+  }
+
+  private clearTokenAndProfile() {
+    this.accessToken = null;
+    this.tokenExpiry = null;
+    this.userProfile = null;
+    localStorage.removeItem(SPOTIFY_ACCESS_TOKEN_KEY);
+    localStorage.removeItem(SPOTIFY_TOKEN_EXPIRY_KEY);
+    localStorage.removeItem(SPOTIFY_USER_PROFILE_KEY);
+    this.spotifyApi.setAccessToken(null);
+  }
+
+  private clearFullSession() {
+    this.clearTokenAndProfile();
+    localStorage.removeItem(CODE_VERIFIER_STORAGE_KEY_CONST);
+  }
 
   private generateRandomString(length: number): string {
     let text = '';
@@ -42,9 +117,11 @@ export class SpotifyService {
   }
 
   public async authorize() {
-    this.userProfile = null;
+    this.clearTokenAndProfile(); // Clear previous session data, but not the verifier which we are about to set.
+    localStorage.removeItem(CODE_VERIFIER_STORAGE_KEY_CONST); // Any lingering verifier from a failed previous attempt should also be cleared
     const verifier = this.generateRandomString(128);
-    localStorage.setItem(this.CODE_VERIFIER_STORAGE_KEY, verifier);
+    localStorage.setItem(CODE_VERIFIER_STORAGE_KEY_CONST, verifier);
+    console.log('Stored new code_verifier:', verifier); // Debug log
     const challenge = await this.generateCodeChallenge(verifier);
 
     const params = new URLSearchParams();
@@ -67,48 +144,42 @@ export class SpotifyService {
 
     if (error) {
       console.error('Error during Spotify authorization:', error);
+      localStorage.removeItem(CODE_VERIFIER_STORAGE_KEY_CONST); // Clean up verifier on auth error
+      this.clearTokenAndProfile();
       return false;
     }
 
     if (code) {
       console.log('Received authorization code:', code);
-      try {
-        const token = await this.exchangeCodeForToken(code);
-        if (token) {
-          this.accessToken = token;
-          this.spotifyApi.setAccessToken(this.accessToken);
-          console.log('Access token obtained and set using PKCE.');
+      const tokenData = await this.exchangeCodeForToken(code); // Verifier is used and cleared inside here
 
-          try {
-            this.userProfile = await this.fetchProfile(this.accessToken);
-            console.log('User profile fetched:', this.userProfile);
-          } catch (profileError) {
-            console.error('Error fetching user profile:', profileError);
-          }
-          return true;
-        } else {
-          console.error('Failed to exchange code for token using PKCE.');
-          return false;
+      if (tokenData && tokenData.access_token && tokenData.expires_in) {
+        let fetchedProfile: UserProfile | undefined;
+        try {
+          fetchedProfile = await this.fetchProfile(tokenData.access_token);
+          console.log('User profile fetched successfully after token exchange.');
+        } catch (profileError) {
+          console.error('Error fetching user profile after token exchange:', profileError);
         }
-      } catch (e) {
-        console.error('Error during PKCE token exchange:', e);
+        this.storeTokenAndProfile(tokenData.access_token, tokenData.expires_in, fetchedProfile);
+        console.log('Token and profile stored after auth callback.');
+        return true;
+      } else {
+        console.error('Failed to exchange code for token or missing token data in callback.');
+        // Verifier should have been cleared by exchangeCodeForToken on failure path already.
+        this.clearTokenAndProfile();
         return false;
       }
-    }
-    if (this.isAuthenticated() && !this.userProfile && this.accessToken) {
-        try {
-            this.userProfile = await this.fetchProfile(this.accessToken);
-        } catch (e) { console.error('Error fetching profile on re-check', e); }
     }
     return this.isAuthenticated();
   }
 
-  private async exchangeCodeForToken(code: string): Promise<string | null> {
-    const verifier = localStorage.getItem(this.CODE_VERIFIER_STORAGE_KEY);
-
+  private async exchangeCodeForToken(code: string): Promise<{ access_token: string; expires_in: number; refresh_token?: string } | null> {
+    const verifier = localStorage.getItem(CODE_VERIFIER_STORAGE_KEY_CONST);
+    console.log('Attempting to retrieve code_verifier:', verifier); // Debug log
     if (!verifier) {
-      console.error('Code verifier not found in local storage.');
-      throw new Error('Code verifier not found.');
+      console.error('CRITICAL: Code verifier not found in local storage during exchange.');
+      return null;
     }
 
     const params = new URLSearchParams();
@@ -125,44 +196,59 @@ export class SpotifyService {
         body: params
       });
 
+      // Verifier has served its purpose, remove it regardless of success/failure of token endpoint
+      localStorage.removeItem(CODE_VERIFIER_STORAGE_KEY_CONST);
+      console.log('Cleared code_verifier after attempt to use it.'); // Debug log
+
       if (!result.ok) {
         const errorBody = await result.text();
-        console.error('Spotify token exchange failed:', result.status, errorBody);
-        throw new Error(`Spotify token API request failed: ${result.status} ${errorBody}`);
+        console.error('Spotify token exchange HTTP error:', result.status, errorBody);
+        return null;
       }
 
-      const { access_token, refresh_token, expires_in } = await result.json();
-      localStorage.removeItem(this.CODE_VERIFIER_STORAGE_KEY);
-
-      if (refresh_token) {
+      const tokenResponse = await result.json();
+      if (tokenResponse.access_token && typeof tokenResponse.expires_in === 'number'){
+        console.log('Token received successfully.'); // Debug log
+        return tokenResponse as { access_token: string; expires_in: number; refresh_token?: string };
+      } else {
+        console.error('Token response missing access_token or expires_in:', tokenResponse);
+        return null;
       }
-
-      return access_token || null;
     } catch (error) {
-      console.error('Exception during token exchange:', error);
-      localStorage.removeItem(this.CODE_VERIFIER_STORAGE_KEY);
+      console.error('Exception during fetch in exchangeCodeForToken:', error);
+      localStorage.removeItem(CODE_VERIFIER_STORAGE_KEY_CONST); // Ensure cleanup on network or other exception
       return null;
     }
   }
 
   getAccessToken(): string | null {
-    return this.accessToken;
+    if (this.accessToken && this.tokenExpiry && Date.now() < this.tokenExpiry) {
+      return this.accessToken;
+    }
+    // If token is invalid or expired, clear relevant session data
+    // but only if it wasn't already cleared by a logout or another process.
+    if(this.accessToken || this.tokenExpiry) { // only clear if they were set
+        console.log("Access token expired or invalid, clearing session data.");
+        this.clearFullSession();
+    }
+    return null;
   }
 
   getUserProfile(): UserProfile | null {
-    return this.userProfile;
+    // Ensure profile is only returned if associated with a valid token session
+    return this.isAuthenticated() ? this.userProfile : null;
   }
 
   isAuthenticated(): boolean {
-    return !!this.getAccessToken();
+    // Check if token exists and is not expired (getAccessToken handles this check and clears if needed)
+    const token = this.getAccessToken();
+    return !!token;
   }
 
   logout() {
-    this.accessToken = null;
-    this.userProfile = null;
-    this.spotifyApi.setAccessToken(null);
-    localStorage.removeItem(this.CODE_VERIFIER_STORAGE_KEY);
-    console.log('Logged out.');
+    this.clearFullSession();
+    console.log('Logged out, full session cleared from storage.');
+    // Potentially add: this.router.navigate(['/']); or similar to redirect to home/login
   }
 
   async createPlaylist(name: string): Promise<SpotifyApi.CreatePlaylistResponse | null> {
@@ -214,23 +300,39 @@ export class SpotifyService {
     };
 
     if (hasStatus(error) && error.status === 401) {
-      console.error('Spotify API Error 401: Token expired or invalid. Re-authorizing.', error.message || error);
-      this.logout();
-      this.authorize();
+      console.error('Spotify API Error 401: Token expired or invalid. Logging out and re-authorizing.', error.message || error);
+      this.logout(); // This will clear storage
+      // this.authorize(); // Re-authorizing immediately might cause loops if the issue isn't just token expiry.
+                       // Consider navigating to a login page or showing a message.
     }
   }
 
   public async fetchProfile(token: string): Promise<UserProfile> {
-    if (!token) throw new Error('Access token is required to fetch profile.');
+    if (!token) {
+        // console.warn('fetchProfile called without a token. If this is unexpected, check callstack.');
+        throw new Error('Access token is required to fetch profile.');
+    }
     const result = await fetch("https://api.spotify.com/v1/me", {
         method: "GET", headers: { Authorization: `Bearer ${token}` }
     });
     if (!result.ok) {
         const errorBody = await result.text();
         console.error('Spotify profile fetch failed:', result.status, errorBody);
+        if (result.status === 401 && this.accessToken === token) { // Check if it's the current token failing
+            console.log("Profile fetch failed with 401, current token might be invalid. Logging out.");
+            this.logout();
+            // this.authorize(); // Avoid immediate re-auth loop
+        }
         throw new Error(`Spotify profile API request failed: ${result.status} ${errorBody}`);
     }
-    return await result.json();
+    const profile = await result.json() as UserProfile;
+    // Update service's profile and store it, only if the token matches current valid token
+    // This check prevents race conditions if multiple profile fetches occur.
+    if (this.accessToken === token) {
+        this.userProfile = profile;
+        localStorage.setItem(SPOTIFY_USER_PROFILE_KEY, JSON.stringify(this.userProfile));
+    }
+    return profile;
   }
 }
 
