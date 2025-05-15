@@ -18,6 +18,7 @@ export class SpotifyService {
   ];
 
   private accessToken: string | null = null;
+  private userProfile: UserProfile | null = null;
   private readonly CODE_VERIFIER_STORAGE_KEY = 'spotify_code_verifier';
 
   constructor(private router: Router) { }
@@ -41,6 +42,7 @@ export class SpotifyService {
   }
 
   public async authorize() {
+    this.userProfile = null;
     const verifier = this.generateRandomString(128);
     localStorage.setItem(this.CODE_VERIFIER_STORAGE_KEY, verifier);
     const challenge = await this.generateCodeChallenge(verifier);
@@ -76,6 +78,13 @@ export class SpotifyService {
           this.accessToken = token;
           this.spotifyApi.setAccessToken(this.accessToken);
           console.log('Access token obtained and set using PKCE.');
+
+          try {
+            this.userProfile = await this.fetchProfile(this.accessToken);
+            console.log('User profile fetched:', this.userProfile);
+          } catch (profileError) {
+            console.error('Error fetching user profile:', profileError);
+          }
           return true;
         } else {
           console.error('Failed to exchange code for token using PKCE.');
@@ -86,7 +95,12 @@ export class SpotifyService {
         return false;
       }
     }
-    return !!this.getAccessToken();
+    if (this.isAuthenticated() && !this.userProfile && this.accessToken) {
+        try {
+            this.userProfile = await this.fetchProfile(this.accessToken);
+        } catch (e) { console.error('Error fetching profile on re-check', e); }
+    }
+    return this.isAuthenticated();
   }
 
   private async exchangeCodeForToken(code: string): Promise<string | null> {
@@ -135,12 +149,17 @@ export class SpotifyService {
     return this.accessToken;
   }
 
+  getUserProfile(): UserProfile | null {
+    return this.userProfile;
+  }
+
   isAuthenticated(): boolean {
     return !!this.getAccessToken();
   }
 
   logout() {
     this.accessToken = null;
+    this.userProfile = null;
     this.spotifyApi.setAccessToken(null);
     localStorage.removeItem(this.CODE_VERIFIER_STORAGE_KEY);
     console.log('Logged out.');
@@ -201,13 +220,18 @@ export class SpotifyService {
     }
   }
 
-  private async fetchProfile(token: string): Promise<UserProfile> {
+  public async fetchProfile(token: string): Promise<UserProfile> {
+    if (!token) throw new Error('Access token is required to fetch profile.');
     const result = await fetch("https://api.spotify.com/v1/me", {
         method: "GET", headers: { Authorization: `Bearer ${token}` }
     });
-
+    if (!result.ok) {
+        const errorBody = await result.text();
+        console.error('Spotify profile fetch failed:', result.status, errorBody);
+        throw new Error(`Spotify profile API request failed: ${result.status} ${errorBody}`);
+    }
     return await result.json();
-}
+  }
 }
 
 export interface UserProfile {

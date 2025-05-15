@@ -1,4 +1,3 @@
-
 <div style="text-align:center">
   <h1>Welcome to {{ title }}!</h1>
   <div *ngIf="!isAuthenticated">
@@ -7,7 +6,16 @@
   </div>
 
   <div *ngIf="isAuthenticated">
-    <p>You are logged in!</p>
+    <div *ngIf="userProfile">
+      <h2>Welcome, {{ userProfile.display_name }}!</h2>
+      <img *ngIf="userProfile.images && userProfile.images.length > 0 && userProfile.images[0].url"
+           [src]="userProfile.images[0].url"
+           alt="Profile Picture"
+           style="width: 100px; height: 100px; border-radius: 50%; margin-bottom: 10px;"
+      >
+      <p *ngIf="userProfile.email">Email: {{ userProfile.email }}</p>
+    </div>
+    <p *ngIf="!userProfile">Logged in, loading profile...</p>
     <button (click)="logout()">Logout</button>
     <hr>
     <app-jam-recorder></app-jam-recorder>

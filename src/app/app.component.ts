@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { CommonModule } from '@angular/common';
-import { SpotifyService } from './spotify.service';
+import { SpotifyService, UserProfile } from './spotify.service';
 import { JamRecorderComponent } from './jam-recorder/jam-recorder.component';
 
 @Component({
@@ -14,14 +14,29 @@ import { JamRecorderComponent } from './jam-recorder/jam-recorder.component';
 export class AppComponent implements OnInit {
   public title = 'Spotify Jam Saver';
   public isAuthenticated = false;
+  public userProfile: UserProfile | null = null;
 
   constructor(private spotifyService: SpotifyService) {}
 
   async ngOnInit() {
-    if (await this.spotifyService.handleAuthCallback()) {
-      this.isAuthenticated = true;
+    this.isAuthenticated = await this.spotifyService.handleAuthCallback();
+    if (this.isAuthenticated) {
+      this.userProfile = this.spotifyService.getUserProfile();
     } else {
       this.isAuthenticated = this.spotifyService.isAuthenticated();
+      if (this.isAuthenticated) {
+        this.userProfile = this.spotifyService.getUserProfile();
+        if (!this.userProfile && this.spotifyService.getAccessToken()) {
+          try {
+            const token = this.spotifyService.getAccessToken();
+            if (token) {
+              this.userProfile = this.spotifyService.getUserProfile();
+            }
+          } catch (e) {
+            console.error("Error fetching profile in AppComponent ngOnInit fallback:", e);
+          }
+        }
+      }
     }
   }
 
@@ -32,5 +47,6 @@ export class AppComponent implements OnInit {
   logout() {
     this.spotifyService.logout();
     this.isAuthenticated = false;
+    this.userProfile = null;
   }
 }
