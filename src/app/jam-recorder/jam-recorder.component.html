@@ -1,31 +1,47 @@
-<div>
-  <button (click)="startRecording()" [disabled]="isRecording">Record My Jam</button>
-  <button (click)="stopRecording()" [disabled]="!isRecording">Stop Recording</button>
-</div>
-
-<div *ngIf="isRecording && playlistUrl">
-  <h2>Playlist: {{ playlistName }}</h2>
-  <p>
-    Shareable URL: <a [href]="playlistUrl" target="_blank">{{ playlistUrl }}</a>
-  </p>
-  <div *ngIf="playlistQrCodeUrl">
-    <p>QR Code:</p>
-    <img [src]="playlistQrCodeUrl" alt="Playlist QR Code">
+<div class="bg-spotify-gray p-6 rounded-lg shadow-xl w-full flex flex-col items-center">
+  <!-- Recording Controls -->
+  <div class="mb-6">
+    <button *ngIf="!isRecording" (click)="startRecording()"
+            class="bg-spotify-green cursor-pointer text-white font-bold py-3 px-8 rounded-full text-lg hover:bg-opacity-80 transition-colors focus:outline-none focus:ring-2 focus:ring-spotify-green focus:ring-opacity-50 shadow-md">
+      Record My Jam
+    </button>
+    <button *ngIf="isRecording" (click)="stopRecording()"
+            class="bg-red-600 text-white cursor-pointer font-bold py-3 px-8 rounded-full text-lg hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 shadow-md">
+      Stop Recording
+    </button>
   </div>
-</div>
 
-<div *ngIf="currentlyPlaying">
-  <h3>Currently Playing:</h3>
-  <p>{{ currentlyPlaying.name }} <span *ngIf="currentTrackArtists">by {{ currentTrackArtists }}</span></p>
-</div>
+  <!-- Playlist Info & QR Code -->
+  <div *ngIf="isRecording && playlistUrl" class="text-center mb-6 p-4 bg-spotify-black rounded-md w-full md:w-3/4 lg:w-1/2">
+    <h2 class="text-xl font-semibold text-white mb-2">Playlist: {{ playlistName }}</h2>
+    <p class="mb-2">
+      <span class="text-gray-400">Shareable URL:</span>
+      <a [href]="playlistUrl" target="_blank" class="text-spotify-green hover:underline break-all">{{ playlistUrl }}</a>
+    </p>
+    <div *ngIf="playlistQrCodeUrl" class="mt-4 flex flex-col items-center">
+      <p class="text-gray-400 mb-2">Scan QR Code:</p>
+      <img [src]="playlistQrCodeUrl" alt="Playlist QR Code" class="w-40 h-40 border-4 border-white rounded-sm bg-white">
+    </div>
+  </div>
 
-<div *ngIf="addedSongs.length > 0">
-  <h3>Added Songs:</h3>
-  <ul>
-    <li *ngFor="let song of addedSongs">
-      {{ song.name }}
-      <span *ngIf="song.added" style="color: green;">✓ Added to playlist</span>
-      <span *ngIf="!song.added">Adding...</span>
-    </li>
-  </ul>
+  <!-- Currently Playing Song -->
+  <div *ngIf="currentlyPlaying" class="my-4 p-4 bg-spotify-black rounded-md w-full md:w-3/4 lg:w-1/2">
+    <h3 class="text-lg font-semibold text-white mb-1">Now Playing:</h3>
+    <p class="text-spotify-light-gray">{{ currentlyPlaying.name }}
+      <span *ngIf="currentTrackArtists" class="text-gray-400">by {{ currentTrackArtists }}</span>
+    </p>
+  </div>
+
+  <!-- Added Songs List -->
+  <div *ngIf="addedSongs.length > 0" class="w-full md:w-3/4 lg:w-1/2 mt-4">
+    <h3 class="text-xl font-semibold text-white mb-3 text-center">Jam Log:</h3>
+    <ul class="space-y-2 max-h-96 overflow-y-auto p-3 bg-spotify-black rounded-md scrollbar-thin scrollbar-thumb-spotify-green scrollbar-track-spotify-gray">
+      <li *ngFor="let song of addedSongs"
+          class="p-3 bg-spotify-gray rounded shadow flex justify-between items-center">
+        <span class="text-spotify-light-gray">{{ song.name }}</span>
+        <span *ngIf="song.added" class="text-spotify-green font-semibold ml-2">✓ Added</span>
+        <span *ngIf="!song.added" class="text-yellow-400 ml-2 animate-pulse">Adding...</span>
+      </li>
+    </ul>
+  </div>
 </div>

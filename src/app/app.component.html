@@ -1,25 +1,41 @@
-<div style="text-align:center">
-  <h1>Welcome to {{ title }}!</h1>
-  <div *ngIf="!isAuthenticated">
-    <p>Please log in with Spotify to continue.</p>
-    <button (click)="login()">Login with Spotify</button>
-  </div>
-
-  <div *ngIf="isAuthenticated">
-    <div *ngIf="userProfile">
-      <h2>Welcome, {{ userProfile.display_name }}!</h2>
-      <img *ngIf="userProfile.images && userProfile.images.length > 0 && userProfile.images[0].url"
-           [src]="userProfile.images[0].url"
-           alt="Profile Picture"
-           style="width: 100px; height: 100px; border-radius: 50%; margin-bottom: 10px;"
-      >
-      <p *ngIf="userProfile.email">Email: {{ userProfile.email }}</p>
+<div class="bg-spotify-black text-spotify-light-gray min-h-screen flex flex-col items-center p-4 font-sans">
+  <header class="w-full max-w-4xl p-4 flex justify-between items-center">
+    <h1 class="text-3xl font-bold text-white">{{ title }}</h1>
+    <div *ngIf="isAuthenticated">
+      <button (click)="logout()" class="bg-spotify-green text-white font-semibold py-2 px-4 rounded hover:bg-opacity-80 transition-colors">
+        Logout
+      </button>
     </div>
-    <p *ngIf="!userProfile">Logged in, loading profile...</p>
-    <button (click)="logout()">Logout</button>
-    <hr>
-    <app-jam-recorder></app-jam-recorder>
-  </div>
+  </header>
+
+  <main class="w-full max-w-4xl flex-grow flex flex-col items-center justify-center">
+    <div *ngIf="!isAuthenticated" class="text-center">
+      <p class="mb-4 text-lg">Please log in with Spotify to continue.</p>
+      <button (click)="login()" class="bg-spotify-green text-white font-bold py-3 px-6 rounded-full text-lg hover:bg-opacity-80 transition-colors focus:outline-none focus:ring-2 focus:ring-spotify-green focus:ring-opacity-50">
+        Login with Spotify
+      </button>
+    </div>
+
+    <div *ngIf="isAuthenticated" class="w-full text-center">
+      <div *ngIf="userProfile" class="mb-6 flex flex-col items-center">
+        <img *ngIf="userProfile.images && userProfile.images.length > 0 && userProfile.images[0].url"
+             [src]="userProfile.images[0].url"
+             alt="Profile Picture"
+             class="w-24 h-24 rounded-full mb-4 shadow-lg"
+        >
+        <h2 class="text-2xl font-semibold text-white">Welcome, {{ userProfile.display_name }}!</h2>
+        <p *ngIf="userProfile.email" class="text-sm text-gray-400">{{ userProfile.email }}</p>
+      </div>
+      <p *ngIf="!userProfile && isAuthenticated" class="text-lg mb-4">Logged in, loading profile...</p>
+
+      <!-- Jam Recorder will go here and be styled next -->
+      <app-jam-recorder class="w-full mt-6"></app-jam-recorder>
+    </div>
+  </main>
+
+  <footer class="w-full max-w-4xl p-4 text-center text-xs text-gray-500">
+    Spotify Jam Saver &copy; 2024
+  </footer>
 </div>
 
 <router-outlet></router-outlet>
