@@ -1,0 +1,31 @@
+<div>
+  <button (click)="startRecording()" [disabled]="isRecording">Record My Jam</button>
+  <button (click)="stopRecording()" [disabled]="!isRecording">Stop Recording</button>
+</div>
+
+<div *ngIf="isRecording && playlistUrl">
+  <h2>Playlist: {{ playlistName }}</h2>
+  <p>
+    Shareable URL: <a [href]="playlistUrl" target="_blank">{{ playlistUrl }}</a>
+  </p>
+  <div *ngIf="playlistQrCodeUrl">
+    <p>QR Code:</p>
+    <img [src]="playlistQrCodeUrl" alt="Playlist QR Code">
+  </div>
+</div>
+
+<div *ngIf="currentlyPlaying">
+  <h3>Currently Playing:</h3>
+  <p>{{ currentlyPlaying.name }} <span *ngIf="currentTrackArtists">by {{ currentTrackArtists }}</span></p>
+</div>
+
+<div *ngIf="addedSongs.length > 0">
+  <h3>Added Songs:</h3>
+  <ul>
+    <li *ngFor="let song of addedSongs">
+      {{ song.name }}
+      <span *ngIf="song.added" style="color: green;">✓ Added to playlist</span>
+      <span *ngIf="!song.added">Adding...</span>
+    </li>
+  </ul>
+</div>

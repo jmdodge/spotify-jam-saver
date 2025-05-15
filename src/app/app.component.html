@@ -332,5 +332,19 @@
 <!-- * * * * * * * * * * End of Placeholder  * * * * * * * * * * * * -->
 <!-- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * -->
 
+<div style="text-align:center">
+  <h1>Welcome to {{ title }}!</h1>
+  <div *ngIf="!isAuthenticated">
+    <p>Please log in with Spotify to continue.</p>
+    <button (click)="login()">Login with Spotify</button>
+  </div>
 
-<router-outlet />
+  <div *ngIf="isAuthenticated">
+    <p>You are logged in!</p>
+    <button (click)="logout()">Logout</button>
+    <hr>
+    <app-jam-recorder></app-jam-recorder>
+  </div>
+</div>
+
+<router-outlet></router-outlet>
