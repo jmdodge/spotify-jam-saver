@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 
 const SPOTIFY_ACCESS_TOKEN_KEY = 'spotify_access_token';
 const SPOTIFY_TOKEN_EXPIRY_KEY = 'spotify_token_expiry';
+const SPOTIFY_REFRESH_TOKEN_KEY = 'spotify_refresh_token';  // Add refresh token storage key
 const SPOTIFY_USER_PROFILE_KEY = 'spotify_user_profile'; // For storing profile to avoid re-fetch on simple reloads
 const CODE_VERIFIER_STORAGE_KEY_CONST = 'spotify_code_verifier'; // Renamed for clarity
 
@@ -25,6 +26,7 @@ export class SpotifyService {
   private accessToken: string | null = null;
   private userProfile: UserProfile | null = null;
   private tokenExpiry: number | null = null; // Store as timestamp (milliseconds)
+  private refreshToken: string | null = null;
 
   constructor(private router: Router) {
     this.loadTokenAndProfileFromStorage();
@@ -33,6 +35,7 @@ export class SpotifyService {
   private loadTokenAndProfileFromStorage(): boolean {
     const storedToken = localStorage.getItem(SPOTIFY_ACCESS_TOKEN_KEY);
     const storedExpiry = localStorage.getItem(SPOTIFY_TOKEN_EXPIRY_KEY);
+    const storedRefreshToken = localStorage.getItem(SPOTIFY_REFRESH_TOKEN_KEY);
     const storedProfile = localStorage.getItem(SPOTIFY_USER_PROFILE_KEY);
 
     if (storedToken && storedExpiry) {
@@ -40,6 +43,7 @@ export class SpotifyService {
       if (Date.now() < expiryTimestamp) {
         this.accessToken = storedToken;
         this.tokenExpiry = expiryTimestamp;
+        this.refreshToken = storedRefreshToken;
         this.spotifyApi.setAccessToken(this.accessToken);
         if (storedProfile) {
           try {
@@ -62,17 +66,29 @@ export class SpotifyService {
         }
         console.log('Loaded token and profile from storage.');
         return true;
+      } else if (storedRefreshToken) {
+        // Token expired but we have a refresh token - try to refresh
+        this.refreshAccessToken(storedRefreshToken).then(success => {
+          if (!success) {
+            this.clearFullSession();
+          }
+        });
+        return false;
       } else {
-        console.log('Spotify token from storage has expired.');
-        this.clearFullSession(); // Clear everything including verifier if token expired
+        console.log('Spotify token from storage has expired and no refresh token available.');
+        this.clearFullSession();
       }
     }
     return false;
   }
 
-  private storeTokenAndProfile(token: string, expiresInSeconds: number, profile?: UserProfile) {
+  private storeTokenAndProfile(token: string, expiresInSeconds: number, refreshToken?: string, profile?: UserProfile) {
     this.accessToken = token;
     this.tokenExpiry = Date.now() + expiresInSeconds * 1000;
+    if (refreshToken) {
+      this.refreshToken = refreshToken;
+      localStorage.setItem(SPOTIFY_REFRESH_TOKEN_KEY, refreshToken);
+    }
     localStorage.setItem(SPOTIFY_ACCESS_TOKEN_KEY, this.accessToken);
     localStorage.setItem(SPOTIFY_TOKEN_EXPIRY_KEY, this.tokenExpiry.toString());
     this.spotifyApi.setAccessToken(this.accessToken);
@@ -86,9 +102,11 @@ export class SpotifyService {
   private clearTokenAndProfile() {
     this.accessToken = null;
     this.tokenExpiry = null;
+    this.refreshToken = null;
     this.userProfile = null;
     localStorage.removeItem(SPOTIFY_ACCESS_TOKEN_KEY);
     localStorage.removeItem(SPOTIFY_TOKEN_EXPIRY_KEY);
+    localStorage.removeItem(SPOTIFY_REFRESH_TOKEN_KEY);
     localStorage.removeItem(SPOTIFY_USER_PROFILE_KEY);
     this.spotifyApi.setAccessToken(null);
   }
@@ -151,7 +169,7 @@ export class SpotifyService {
 
     if (code) {
       console.log('Received authorization code:', code);
-      const tokenData = await this.exchangeCodeForToken(code); // Verifier is used and cleared inside here
+      const tokenData = await this.exchangeCodeForToken(code);
 
       if (tokenData && tokenData.access_token && tokenData.expires_in) {
         let fetchedProfile: UserProfile | undefined;
@@ -161,7 +179,12 @@ export class SpotifyService {
         } catch (profileError) {
           console.error('Error fetching user profile after token exchange:', profileError);
         }
-        this.storeTokenAndProfile(tokenData.access_token, tokenData.expires_in, fetchedProfile);
+        this.storeTokenAndProfile(
+          tokenData.access_token,
+          tokenData.expires_in,
+          tokenData.refresh_token,
+          fetchedProfile
+        );
         console.log('Token and profile stored after auth callback.');
         return true;
       } else {
@@ -208,7 +231,11 @@ export class SpotifyService {
 
       const tokenResponse = await result.json();
       if (tokenResponse.access_token && typeof tokenResponse.expires_in === 'number'){
-        console.log('Token received successfully.'); // Debug log
+        console.log('Token received successfully.');
+        // Make sure we store the refresh token if it's provided
+        if (tokenResponse.refresh_token) {
+          console.log('Refresh token received.');
+        }
         return tokenResponse as { access_token: string; expires_in: number; refresh_token?: string };
       } else {
         console.error('Token response missing access_token or expires_in:', tokenResponse);
@@ -222,14 +249,25 @@ export class SpotifyService {
   }
 
   getAccessToken(): string | null {
-    if (this.accessToken && this.tokenExpiry && Date.now() < this.tokenExpiry) {
-      return this.accessToken;
+    if (this.accessToken && this.tokenExpiry) {
+      // If token is about to expire in the next 5 minutes, try to refresh it
+      if (Date.now() + 300000 > this.tokenExpiry && this.refreshToken) {
+        this.refreshAccessToken(this.refreshToken).then(success => {
+          if (!success) {
+            this.clearFullSession();
+          }
+        });
+      }
+
+      if (Date.now() < this.tokenExpiry) {
+        return this.accessToken;
+      }
     }
+
     // If token is invalid or expired, clear relevant session data
-    // but only if it wasn't already cleared by a logout or another process.
-    if(this.accessToken || this.tokenExpiry) { // only clear if they were set
-        console.log("Access token expired or invalid, clearing session data.");
-        this.clearFullSession();
+    if (this.accessToken || this.tokenExpiry) {
+      console.log("Access token expired or invalid, clearing session data.");
+      this.clearFullSession();
     }
     return null;
   }
@@ -333,6 +371,38 @@ export class SpotifyService {
         localStorage.setItem(SPOTIFY_USER_PROFILE_KEY, JSON.stringify(this.userProfile));
     }
     return profile;
+  }
+
+  private async refreshAccessToken(refreshToken: string): Promise<boolean> {
+    const params = new URLSearchParams();
+    params.append('client_id', this.clientId);
+    params.append('grant_type', 'refresh_token');
+    params.append('refresh_token', refreshToken);
+
+    try {
+      const result = await fetch('https://accounts.spotify.com/api/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params
+      });
+
+      if (!result.ok) {
+        console.error('Failed to refresh token:', await result.text());
+        return false;
+      }
+
+      const tokenData = await result.json();
+      if (tokenData.access_token && typeof tokenData.expires_in === 'number') {
+        // Note: refresh token is not included in the response when refreshing
+        // We keep using the existing refresh token
+        this.storeTokenAndProfile(tokenData.access_token, tokenData.expires_in);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error refreshing token:', error);
+      return false;
+    }
   }
 }
 
