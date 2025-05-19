@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { SpotifyService } from '../spotify.service';
+import { SpotifyPlayService } from '../spotify/services/play/spotify-play.service';
 import QRCode from 'qrcode';
 
 @Component({
@@ -21,7 +21,7 @@ export class JamRecorderComponent implements OnInit, OnDestroy {
 
   private playbackInterval: any;
 
-  constructor(private spotifyService: SpotifyService) {}
+  constructor(private playService: SpotifyPlayService) {}
 
   get currentTrackArtists(): string {
     if (this.currentlyPlaying && this.currentlyPlaying.artists && this.currentlyPlaying.artists.length > 0) {
@@ -39,7 +39,7 @@ export class JamRecorderComponent implements OnInit, OnDestroy {
     this.playlistName = `Jam [${formattedDate}]`;
 
     try {
-      const playlist = await this.spotifyService.createPlaylist(this.playlistName);
+      const playlist = await this.playService.createPlaylist(this.playlistName);
       if (playlist) {
         this.currentPlaylistId = playlist.id;
         this.playlistUrl = playlist.external_urls.spotify;
@@ -59,25 +59,22 @@ export class JamRecorderComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Check what's currently playing every 5 seconds, and add the song to our playlist if we haven't already added that
+   * song.
+   */
   monitorPlayback() {
     this.playbackInterval = setInterval(async () => {
       if (!this.isRecording || !this.currentPlaylistId) return;
 
       try {
-        const playbackState = await this.spotifyService.getPlaybackState();
-        if (playbackState && playbackState.item && playbackState.is_playing) {
-          const track = playbackState.item as SpotifyApi.TrackObjectFull;
-          if (track.id !== this.currentlyPlaying?.id && !this.addedSongs.find(s => s.id === track.id)) {
-            this.currentlyPlaying = track;
-            this.addSongToPlaylist(track);
-          }
+        const track = await this.playService.getCurrentTrack();
+        if (track && track.id !== this.currentlyPlaying?.id && !this.addedSongs.find(s => s.id === track.id)) {
+          this.currentlyPlaying = track;
+          this.addSongToPlaylist(track);
         }
       } catch (error) {
         console.error('Error monitoring playback:', error);
-        if ((error as any)?.status === 401) {
-            this.stopRecording();
-            this.spotifyService.authorize();
-        }
       }
     }, 5000);
   }
@@ -89,7 +86,7 @@ export class JamRecorderComponent implements OnInit, OnDestroy {
     this.addedSongs.push(songEntry);
 
     try {
-      await this.spotifyService.addTrackToPlaylist(this.currentPlaylistId, track.uri);
+      await this.playService.addTrackToPlaylist(this.currentPlaylistId, track.uri);
       const addedSong = this.addedSongs.find(s => s.id === track.id);
       if (addedSong) {
         addedSong.added = true;
