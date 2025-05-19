@@ -289,6 +289,30 @@ export class SpotifyService {
     // Potentially add: this.router.navigate(['/']); or similar to redirect to home/login
   }
 
+  private async handleApiError(error: any): Promise<boolean> {
+    const hasStatus = (err: any): err is { status: number, message?: string } => {
+        return typeof err === 'object' && err !== null && typeof err.status === 'number';
+    };
+
+    if (hasStatus(error) && error.status === 401) {
+      console.log('Spotify API Error 401: Token expired or invalid. Attempting to refresh token...');
+
+      // Try to refresh the token if we have one
+      if (this.refreshToken) {
+        const refreshSuccess = await this.refreshAccessToken(this.refreshToken);
+        if (refreshSuccess) {
+          console.log('Successfully refreshed token, retrying operation...');
+          return true; // Signal that we should retry the operation
+        }
+      }
+
+      // If refresh failed or we don't have a refresh token, then logout
+      console.error('Token refresh failed or no refresh token available. Logging out.');
+      this.logout();
+    }
+    return false; // Signal that we should not retry
+  }
+
   async createPlaylist(name: string): Promise<SpotifyApi.CreatePlaylistResponse | null> {
     if (!this.isAuthenticated()) {
       this.authorize();
@@ -300,7 +324,18 @@ export class SpotifyService {
       return playlist;
     } catch (error) {
       console.error('Error creating playlist:', error);
-      this.handleApiError(error);
+      const shouldRetry = await this.handleApiError(error);
+      if (shouldRetry) {
+        // Retry the operation once with the new token
+        try {
+          const user = await this.spotifyApi.getMe();
+          const playlist = await this.spotifyApi.createPlaylist(user.id, { name: name, public: true });
+          return playlist;
+        } catch (retryError) {
+          console.error('Error creating playlist after token refresh:', retryError);
+          return null;
+        }
+      }
       return null;
     }
   }
@@ -313,7 +348,16 @@ export class SpotifyService {
       return await this.spotifyApi.getMyCurrentPlaybackState();
     } catch (error) {
       console.error('Error getting playback state:', error);
-      this.handleApiError(error);
+      const shouldRetry = await this.handleApiError(error);
+      if (shouldRetry) {
+        // Retry the operation once with the new token
+        try {
+          return await this.spotifyApi.getMyCurrentPlaybackState();
+        } catch (retryError) {
+          console.error('Error getting playback state after token refresh:', retryError);
+          return null;
+        }
+      }
       return null;
     }
   }
@@ -327,50 +371,55 @@ export class SpotifyService {
       return await this.spotifyApi.addTracksToPlaylist(playlistId, [trackUri]);
     } catch (error) {
       console.error('Error adding track to playlist:', error);
-      this.handleApiError(error);
+      const shouldRetry = await this.handleApiError(error);
+      if (shouldRetry) {
+        // Retry the operation once with the new token
+        try {
+          return await this.spotifyApi.addTracksToPlaylist(playlistId, [trackUri]);
+        } catch (retryError) {
+          console.error('Error adding track to playlist after token refresh:', retryError);
+          return null;
+        }
+      }
       return null;
-    }
-  }
-
-  private handleApiError(error: any) {
-    const hasStatus = (err: any): err is { status: number, message?: string } => {
-        return typeof err === 'object' && err !== null && typeof err.status === 'number';
-    };
-
-    if (hasStatus(error) && error.status === 401) {
-      console.error('Spotify API Error 401: Token expired or invalid. Logging out and re-authorizing.', error.message || error);
-      this.logout(); // This will clear storage
-      // this.authorize(); // Re-authorizing immediately might cause loops if the issue isn't just token expiry.
-                       // Consider navigating to a login page or showing a message.
     }
   }
 
   public async fetchProfile(token: string): Promise<UserProfile> {
     if (!token) {
-        // console.warn('fetchProfile called without a token. If this is unexpected, check callstack.');
         throw new Error('Access token is required to fetch profile.');
     }
-    const result = await fetch("https://api.spotify.com/v1/me", {
-        method: "GET", headers: { Authorization: `Bearer ${token}` }
-    });
-    if (!result.ok) {
-        const errorBody = await result.text();
-        console.error('Spotify profile fetch failed:', result.status, errorBody);
-        if (result.status === 401 && this.accessToken === token) { // Check if it's the current token failing
-            console.log("Profile fetch failed with 401, current token might be invalid. Logging out.");
-            this.logout();
-            // this.authorize(); // Avoid immediate re-auth loop
+    try {
+        const result = await fetch("https://api.spotify.com/v1/me", {
+            method: "GET", headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!result.ok) {
+            const errorBody = await result.text();
+            console.error('Spotify profile fetch failed:', result.status, errorBody);
+            if (result.status === 401 && this.accessToken === token) {
+                // Try to refresh the token if this is our current token
+                if (this.refreshToken) {
+                    const refreshSuccess = await this.refreshAccessToken(this.refreshToken);
+                    if (refreshSuccess) {
+                        // Retry the profile fetch with the new token
+                        return this.fetchProfile(this.accessToken!);
+                    }
+                }
+                console.log("Profile fetch failed with 401 and token refresh failed. Logging out.");
+                this.logout();
+            }
+            throw new Error(`Spotify profile API request failed: ${result.status} ${errorBody}`);
         }
-        throw new Error(`Spotify profile API request failed: ${result.status} ${errorBody}`);
+        const profile = await result.json() as UserProfile;
+        if (this.accessToken === token) {
+            this.userProfile = profile;
+            localStorage.setItem(SPOTIFY_USER_PROFILE_KEY, JSON.stringify(this.userProfile));
+        }
+        return profile;
+    } catch (error) {
+        console.error('Error fetching profile:', error);
+        throw error;
     }
-    const profile = await result.json() as UserProfile;
-    // Update service's profile and store it, only if the token matches current valid token
-    // This check prevents race conditions if multiple profile fetches occur.
-    if (this.accessToken === token) {
-        this.userProfile = profile;
-        localStorage.setItem(SPOTIFY_USER_PROFILE_KEY, JSON.stringify(this.userProfile));
-    }
-    return profile;
   }
 
   private async refreshAccessToken(refreshToken: string): Promise<boolean> {
