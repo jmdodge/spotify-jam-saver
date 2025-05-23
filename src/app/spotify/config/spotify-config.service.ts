@@ -1,11 +1,12 @@
 import { Injectable } from '@angular/core';
+import { environment } from '../../../environments/environment';
 
 @Injectable({
   providedIn: 'root'
 })
 export class SpotifyConfigService {
   readonly clientId = 'ac5c1af01d0f46659597010bee387883';
-  readonly redirectUri = 'http://127.0.0.1:4205/';
+  readonly redirectUri = environment.spotifyRedirectUri;
   readonly scopes = [
     'playlist-read-private',
     'playlist-modify-public',
