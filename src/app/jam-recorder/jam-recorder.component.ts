@@ -1,17 +1,21 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { SpotifyPlayService } from '../spotify/services/play/spotify-play.service';
+import { PlaylistSelectorComponent } from './playlist-selector/playlist-selector.component';
+import { PlaylistChoiceComponent } from './playlist-choice/playlist-choice.component';
 import QRCode from 'qrcode';
 
 @Component({
   selector: 'app-jam-recorder',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, PlaylistSelectorComponent, PlaylistChoiceComponent],
   templateUrl: './jam-recorder.component.html',
-  styleUrl: './jam-recorder.component.scss'
+  styleUrl: './jam-recorder.component.scss',
 })
 export class JamRecorderComponent implements OnInit, OnDestroy {
   isRecording = false;
+  showPlaylistChoice = false;
+  showPlaylistSelector = false;
   playlistName = '';
   playlistUrl = '';
   playlistQrCodeUrl = '';
@@ -24,19 +28,30 @@ export class JamRecorderComponent implements OnInit, OnDestroy {
   constructor(private playService: SpotifyPlayService) {}
 
   get currentTrackArtists(): string {
-    if (this.currentlyPlaying && this.currentlyPlaying.artists && this.currentlyPlaying.artists.length > 0) {
-      return this.currentlyPlaying.artists.map(a => a.name).join(', ');
+    if (
+      this.currentlyPlaying &&
+      this.currentlyPlaying.artists &&
+      this.currentlyPlaying.artists.length > 0
+    ) {
+      return this.currentlyPlaying.artists.map((a) => a.name).join(', ');
     }
     return '';
   }
 
   ngOnInit(): void {}
 
-  async startRecording() {
-    this.isRecording = true;
-    const date = new Date();
-    const formattedDate = `${('0' + (date.getMonth() + 1)).slice(-2)}-${('0' + date.getDate()).slice(-2)}-${date.getFullYear()}`;
-    this.playlistName = `Jam [${formattedDate}]`;
+  showPlaylistSelection() {
+    this.showPlaylistChoice = true;
+  }
+
+  onChooseExistingPlaylist() {
+    this.showPlaylistChoice = false;
+    this.showPlaylistSelector = true;
+  }
+
+  async onCreateNewPlaylist(playlistName: string) {
+    this.showPlaylistChoice = false;
+    this.playlistName = playlistName;
 
     try {
       const playlist = await this.playService.createPlaylist(this.playlistName);
@@ -44,12 +59,30 @@ export class JamRecorderComponent implements OnInit, OnDestroy {
         this.currentPlaylistId = playlist.id;
         this.playlistUrl = playlist.external_urls.spotify;
         this.playlistQrCodeUrl = await QRCode.toDataURL(this.playlistUrl);
-        this.monitorPlayback();
+        this.startRecording();
       }
     } catch (error) {
-      console.error('Error starting recording:', error);
-      this.isRecording = false;
+      console.error('Error creating playlist:', error);
     }
+  }
+
+  onCancelPlaylistSelection() {
+    this.showPlaylistChoice = false;
+    this.showPlaylistSelector = false;
+  }
+
+  async onPlaylistSelected(playlist: SpotifyApi.PlaylistObjectSimplified) {
+    this.showPlaylistSelector = false;
+    this.currentPlaylistId = playlist.id;
+    this.playlistName = playlist.name;
+    this.playlistUrl = playlist.external_urls.spotify;
+    this.playlistQrCodeUrl = await QRCode.toDataURL(this.playlistUrl);
+    this.startRecording();
+  }
+
+  startRecording() {
+    this.isRecording = true;
+    this.monitorPlayback();
   }
 
   stopRecording() {
@@ -69,7 +102,11 @@ export class JamRecorderComponent implements OnInit, OnDestroy {
 
       try {
         const track = await this.playService.getCurrentTrack();
-        if (track && track.id !== this.currentlyPlaying?.id && !this.addedSongs.find(s => s.id === track.id)) {
+        if (
+          track &&
+          track.id !== this.currentlyPlaying?.id &&
+          !this.addedSongs.find((s) => s.id === track.id)
+        ) {
           this.currentlyPlaying = track;
           this.addSongToPlaylist(track);
         }
@@ -86,8 +123,11 @@ export class JamRecorderComponent implements OnInit, OnDestroy {
     this.addedSongs.push(songEntry);
 
     try {
-      await this.playService.addTrackToPlaylist(this.currentPlaylistId, track.uri);
-      const addedSong = this.addedSongs.find(s => s.id === track.id);
+      await this.playService.addTrackToPlaylist(
+        this.currentPlaylistId,
+        track.uri,
+      );
+      const addedSong = this.addedSongs.find((s) => s.id === track.id);
       if (addedSong) {
         addedSong.added = true;
       }

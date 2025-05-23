@@ -5,7 +5,7 @@
   <div class="mb-6">
     <button
       *ngIf="!isRecording"
-      (click)="startRecording()"
+      (click)="showPlaylistSelection()"
       class="bg-spotify-green cursor-pointer text-white font-bold py-3 px-8 rounded-full text-lg hover:bg-opacity-80 transition-colors focus:outline-none focus:ring-2 focus:ring-spotify-green focus:ring-opacity-50 shadow-md"
     >
       Record My Jam
@@ -18,6 +18,21 @@
       Stop Recording
     </button>
   </div>
+
+  <!-- Initial Playlist Choice -->
+  <app-playlist-choice
+    *ngIf="showPlaylistChoice"
+    (createNew)="onCreateNewPlaylist($event)"
+    (chooseExisting)="onChooseExistingPlaylist()"
+    (cancel)="onCancelPlaylistSelection()"
+  ></app-playlist-choice>
+
+  <!-- Playlist Selector (shown only after choosing "Choose Existing Playlist") -->
+  <app-playlist-selector
+    *ngIf="showPlaylistSelector"
+    (select)="onPlaylistSelected($event)"
+    (cancel)="onCancelPlaylistSelection()"
+  ></app-playlist-selector>
 
   <!-- Playlist Info & QR Code -->
   <div

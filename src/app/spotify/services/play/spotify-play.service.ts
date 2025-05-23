@@ -4,17 +4,19 @@ import { SpotifyUserService } from '../user/spotify-user.service';
 import { BaseSpotifyService } from '../base/base-spotify.service';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class SpotifyPlayService extends BaseSpotifyService {
   constructor(
     authService: SpotifyAuthService,
-    private userService: SpotifyUserService
+    private userService: SpotifyUserService,
   ) {
     super(authService);
   }
 
-  async createPlaylist(name: string): Promise<SpotifyApi.CreatePlaylistResponse | null> {
+  async createPlaylist(
+    name: string,
+  ): Promise<SpotifyApi.CreatePlaylistResponse | null> {
     if (!this.requireAuth()) {
       return null;
     }
@@ -24,17 +26,29 @@ export class SpotifyPlayService extends BaseSpotifyService {
       if (!user) {
         throw new Error('Could not get current user');
       }
-      return await this.spotifyApi.createPlaylist(user.id, { name, public: true });
+
+      const date = new Date();
+      const formattedDate = `${('0' + (date.getMonth() + 1)).slice(-2)}-${('0' + date.getDate()).slice(-2)}-${date.getFullYear()}`;
+      const description = `Created by Spotify Jam Saver on ${formattedDate}`;
+
+      return await this.spotifyApi.createPlaylist(user.id, {
+        name,
+        description,
+        public: true,
+      });
     });
   }
 
-  async addTrackToPlaylist(playlistId: string, trackUri: string): Promise<SpotifyApi.AddTracksToPlaylistResponse | null> {
+  async addTrackToPlaylist(
+    playlistId: string,
+    trackUri: string,
+  ): Promise<SpotifyApi.AddTracksToPlaylistResponse | null> {
     if (!this.requireAuth()) {
       return null;
     }
 
     return this.handleApiCall(() =>
-      this.spotifyApi.addTracksToPlaylist(playlistId, [trackUri])
+      this.spotifyApi.addTracksToPlaylist(playlistId, [trackUri]),
     );
   }
 
@@ -44,7 +58,7 @@ export class SpotifyPlayService extends BaseSpotifyService {
     }
 
     return this.handleApiCall(() =>
-      this.spotifyApi.getMyCurrentPlaybackState()
+      this.spotifyApi.getMyCurrentPlaybackState(),
     );
   }
 
@@ -59,22 +73,24 @@ export class SpotifyPlayService extends BaseSpotifyService {
   async getCurrentTrackArtists(): Promise<string> {
     const track = await this.getCurrentTrack();
     if (track?.artists && track.artists.length > 0) {
-      return track.artists.map(a => a.name).join(', ');
+      return track.artists.map((a) => a.name).join(', ');
     }
     return '';
   }
 
-  async getPlaylist(playlistId: string): Promise<SpotifyApi.SinglePlaylistResponse | null> {
+  async getPlaylist(
+    playlistId: string,
+  ): Promise<SpotifyApi.SinglePlaylistResponse | null> {
     if (!this.requireAuth()) {
       return null;
     }
 
-    return this.handleApiCall(() =>
-      this.spotifyApi.getPlaylist(playlistId)
-    );
+    return this.handleApiCall(() => this.spotifyApi.getPlaylist(playlistId));
   }
 
-  async getPlaylistTracks(playlistId: string): Promise<SpotifyApi.PlaylistTrackObject[] | null> {
+  async getPlaylistTracks(
+    playlistId: string,
+  ): Promise<SpotifyApi.PlaylistTrackObject[] | null> {
     if (!this.requireAuth()) {
       return null;
     }
@@ -83,5 +99,15 @@ export class SpotifyPlayService extends BaseSpotifyService {
       const response = await this.spotifyApi.getPlaylistTracks(playlistId);
       return response.items;
     });
+  }
+
+  async getUserPlaylists(): Promise<SpotifyApi.PlaylistObjectSimplified[]> {
+    try {
+      const response = await this.spotifyApi.getUserPlaylists();
+      return response.items;
+    } catch (error) {
+      console.error('Error fetching user playlists:', error);
+      throw error;
+    }
   }
 }
