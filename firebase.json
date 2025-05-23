@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "public": "dist/spotify-jam-saver",
+    "public": "dist/spotify-jam-saver/browser",
     "ignore": [
       "firebase.json",
       "**/.*",
