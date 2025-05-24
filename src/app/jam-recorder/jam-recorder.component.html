@@ -10,13 +10,31 @@
     >
       Record My Jam
     </button>
-    <button
-      *ngIf="isRecording"
-      (click)="stopRecording()"
-      class="bg-red-600 text-white cursor-pointer font-bold py-3 px-8 rounded-full text-lg hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 shadow-md"
-    >
-      Stop Recording
-    </button>
+    <div *ngIf="isRecording">
+      <div class="flex items-center justify-center gap-2 mb-3 text-yellow-400">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-5 w-5"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+        >
+          <path
+            fill-rule="evenodd"
+            d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+            clip-rule="evenodd"
+          />
+        </svg>
+        <span class="text-sm"
+          >Please leave this page open while your jam is playing</span
+        >
+      </div>
+      <button
+        (click)="stopRecording()"
+        class="bg-red-600 text-white cursor-pointer font-bold py-3 px-8 rounded-full text-lg hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 shadow-md"
+      >
+        Stop Recording
+      </button>
+    </div>
   </div>
 
   <!-- Initial Playlist Choice -->
@@ -32,18 +50,45 @@
     *ngIf="isRecording && playlistUrl"
     class="text-center mb-6 p-4 bg-spotify-black rounded-md w-full md:w-3/4 lg:w-1/2"
   >
+    <div class="text-sm">Your jam is saved to this playlist:</div>
     <h2 class="text-xl font-semibold text-white mb-2">
-      Playlist: {{ playlistName }}
+      {{ playlistName }}
     </h2>
-    <p class="mb-2">
+    <div class="mb-2">
       <span class="text-gray-400">Shareable URL: </span>
-      <a
-        [href]="playlistUrl"
-        target="_blank"
-        class="text-spotify-green hover:underline break-all"
-        >{{ playlistUrl }}</a
-      >
-    </p>
+      <div class="flex items-center gap-2 mt-1">
+        <a
+          [href]="playlistUrl"
+          target="_blank"
+          class="text-spotify-green hover:underline break-all flex-grow"
+          >{{ playlistUrl }}</a
+        >
+        <button
+          (click)="copyAndShareUrl()"
+          class="flex items-center gap-1 bg-spotify-gray hover:bg-spotify-gray/80 text-white px-3 py-1.5 rounded-md text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-spotify-green focus:ring-opacity-50 relative"
+          [title]="'Copy URL'"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-4 w-4"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+          >
+            <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
+            <path
+              d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z"
+            />
+          </svg>
+          <span>Share</span>
+          <div
+            *ngIf="showToast"
+            class="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-spotify-black text-white px-3 py-1.5 rounded-md text-sm whitespace-nowrap shadow-lg animate-fade-in-out"
+          >
+            Copied to clipboard
+          </div>
+        </button>
+      </div>
+    </div>
     <div *ngIf="playlistQrCodeUrl" class="mt-4 flex flex-col items-center">
       <p class="text-gray-400 mb-2">Scan QR Code:</p>
       <img

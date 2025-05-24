@@ -20,6 +20,8 @@ export class JamRecorderComponent implements OnInit, OnDestroy {
   currentPlaylistId: string | null = null;
   currentlyPlaying: SpotifyApi.TrackObjectFull | null = null;
   addedSongs: { id: string; name: string; added: boolean }[] = [];
+  showToast = false;
+  toastTimeout: any;
 
   private playbackInterval: any;
 
@@ -128,7 +130,43 @@ export class JamRecorderComponent implements OnInit, OnDestroy {
     }
   }
 
+  async copyAndShareUrl() {
+    if (!this.playlistUrl) return;
+
+    try {
+      // Try to use the Web Share API first (mobile devices)
+      if (navigator.share) {
+        await navigator.share({
+          title: 'My Spotify Jam',
+          text: `Check out my jam playlist: ${this.playlistName}`,
+          url: this.playlistUrl,
+        });
+      } else {
+        // Fallback to clipboard copy
+        await navigator.clipboard.writeText(this.playlistUrl);
+        this.showCopyToast();
+      }
+    } catch (err) {
+      console.error('Failed to share/copy:', err);
+    }
+  }
+
+  private showCopyToast() {
+    // Clear any existing timeout
+    if (this.toastTimeout) {
+      clearTimeout(this.toastTimeout);
+    }
+
+    this.showToast = true;
+    this.toastTimeout = setTimeout(() => {
+      this.showToast = false;
+    }, 2000); // Hide after 2 seconds
+  }
+
   ngOnDestroy(): void {
     this.stopRecording();
+    if (this.toastTimeout) {
+      clearTimeout(this.toastTimeout);
+    }
   }
 }
