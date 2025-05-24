@@ -15,7 +15,6 @@ import QRCode from 'qrcode';
 export class JamRecorderComponent implements OnInit, OnDestroy {
   isRecording = false;
   showPlaylistChoice = false;
-  showPlaylistSelector = false;
   playlistName = '';
   playlistUrl = '';
   playlistQrCodeUrl = '';
@@ -44,11 +43,6 @@ export class JamRecorderComponent implements OnInit, OnDestroy {
     this.showPlaylistChoice = true;
   }
 
-  onChooseExistingPlaylist() {
-    this.showPlaylistChoice = false;
-    this.showPlaylistSelector = true;
-  }
-
   async onCreateNewPlaylist(playlistName: string) {
     this.showPlaylistChoice = false;
     this.playlistName = playlistName;
@@ -68,11 +62,10 @@ export class JamRecorderComponent implements OnInit, OnDestroy {
 
   onCancelPlaylistSelection() {
     this.showPlaylistChoice = false;
-    this.showPlaylistSelector = false;
   }
 
   async onPlaylistSelected(playlist: SpotifyApi.PlaylistObjectSimplified) {
-    this.showPlaylistSelector = false;
+    this.showPlaylistChoice = false;
     this.currentPlaylistId = playlist.id;
     this.playlistName = playlist.name;
     this.playlistUrl = playlist.external_urls.spotify;

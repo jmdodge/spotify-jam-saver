@@ -98,11 +98,17 @@ import { SpotifyPlayService } from '../../spotify/services/play/spotify-play.ser
 
         <!-- Action Buttons -->
         <div
-          class="flex justify-end gap-3 mt-4 pt-4 border-t border-spotify-gray"
+          class="flex justify-between gap-3 mt-4 pt-4 border-t border-spotify-gray"
         >
           <button
+            (click)="back.emit()"
+            class="px-4 py-2 text-white hover:bg-spotify-gray rounded-md transition-colors cursor-pointer"
+          >
+            Back
+          </button>
+          <button
             (click)="cancel.emit()"
-            class="px-4 py-2 text-white hover:bg-spotify-gray rounded-md transition-colors"
+            class="px-4 py-2 text-white hover:bg-spotify-gray rounded-md transition-colors cursor-pointer"
           >
             Cancel
           </button>
@@ -121,7 +127,7 @@ import { SpotifyPlayService } from '../../spotify/services/play/spotify-play.ser
 export class PlaylistSelectorComponent implements OnInit {
   @Output() select = new EventEmitter<SpotifyApi.PlaylistObjectSimplified>();
   @Output() cancel = new EventEmitter<void>();
-  @Output() createNew = new EventEmitter<void>();
+  @Output() back = new EventEmitter<void>();
 
   playlists: SpotifyApi.PlaylistObjectSimplified[] = [];
   filteredPlaylists: SpotifyApi.PlaylistObjectSimplified[] = [];

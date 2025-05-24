@@ -23,16 +23,9 @@
   <app-playlist-choice
     *ngIf="showPlaylistChoice"
     (createNew)="onCreateNewPlaylist($event)"
-    (chooseExisting)="onChooseExistingPlaylist()"
+    (playlistSelected)="onPlaylistSelected($event)"
     (cancel)="onCancelPlaylistSelection()"
   ></app-playlist-choice>
-
-  <!-- Playlist Selector (shown only after choosing "Choose Existing Playlist") -->
-  <app-playlist-selector
-    *ngIf="showPlaylistSelector"
-    (select)="onPlaylistSelected($event)"
-    (cancel)="onCancelPlaylistSelection()"
-  ></app-playlist-selector>
 
   <!-- Playlist Info & QR Code -->
   <div
