@@ -1,14 +1,13 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { SpotifyPlayService } from '../spotify/services/play/spotify-play.service';
-import { PlaylistSelectorComponent } from './playlist-selector/playlist-selector.component';
 import { PlaylistChoiceComponent } from './playlist-choice/playlist-choice.component';
 import QRCode from 'qrcode';
 
 @Component({
   selector: 'app-jam-recorder',
   standalone: true,
-  imports: [CommonModule, PlaylistSelectorComponent, PlaylistChoiceComponent],
+  imports: [CommonModule, PlaylistChoiceComponent],
   templateUrl: './jam-recorder.component.html',
   styleUrl: './jam-recorder.component.scss',
 })
